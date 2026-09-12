@@ -21,6 +21,31 @@ st.set_page_config(
 )
 init_db()
 
+
+# ============================================================
+# HELPER: Render clean HTML table (single-line to avoid markdown breaks)
+# ============================================================
+def render_html_table(headers, rows, table_class="data-table"):
+    """
+    Render a clean HTML table for Streamlit.
+    Streamlit's markdown parser breaks on newlines inside <table>,
+    so we build everything as a single-line string.
+    """
+    th_html = "".join(f"<th>{h}</th>" for h in headers)
+    tbody_html = ""
+    for row in rows:
+        tds = "".join(f"<td>{cell}</td>" for cell in row)
+        tbody_html += f"<tr>{tds}</tr>"
+
+    html = (
+        f'<table class="{table_class}">'
+        f'<thead><tr>{th_html}</tr></thead>'
+        f'<tbody>{tbody_html}</tbody>'
+        f'</table>'
+    )
+    st.markdown(html, unsafe_allow_html=True)
+
+
 # ============================================================
 # GLOBAL CSS — MODERN SAAS DASHBOARD THEME
 # ============================================================
@@ -28,7 +53,6 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    /* ---------- RESET ---------- */
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
@@ -81,7 +105,6 @@ st.markdown("""
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:has(input:checked) * {
         color: #ffffff !important;
     }
-    /* Hide radio dots */
     [data-testid="stSidebar"] .stRadio input[type="radio"] {
         display: none;
     }
@@ -116,14 +139,6 @@ st.markdown("""
     }
 
     /* ---------- TOP BAR ---------- */
-    .topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.8rem;
-        gap: 1rem;
-        flex-wrap: wrap;
-    }
     .search-box {
         flex: 1;
         max-width: 480px;
@@ -314,9 +329,11 @@ st.markdown("""
         background: #fafbff;
     }
     .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table td .name-cell,
     .data-table td.name-cell {
-        font-weight: 600;
-        color: #111827;
+        font-weight: 700;
+        color: #4f46e5;
+        font-size: 0.85rem;
     }
 
     /* ---------- STATUS BADGES ---------- */
@@ -347,12 +364,10 @@ st.markdown("""
         height: 100%;
         border-radius: 10px;
         background: linear-gradient(90deg, #6366f1, #8b5cf6);
-        transition: width 0.4s ease;
     }
     .progress-fill.green { background: linear-gradient(90deg, #10b981, #34d399); }
     .progress-fill.orange { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
     .progress-fill.red { background: linear-gradient(90deg, #ef4444, #f87171); }
-
     .progress-pct {
         font-size: 0.78rem;
         font-weight: 700;
@@ -532,7 +547,6 @@ st.markdown("""
         }
         .kpi-value { font-size: 1.25rem; }
         .gauge-value { font-size: 2rem; }
-        .topbar { flex-direction: column; align-items: stretch; }
         .search-box { max-width: 100%; }
     }
 </style>
@@ -552,6 +566,12 @@ DEPARTMENTS = {
 STATUS_MAP = {
     "Pending": "status-pending",
     "Resolved": "status-completed",
+}
+
+PRIORITY_COLORS = {
+    "High": "#ef4444",
+    "Medium": "#f59e0b",
+    "Low": "#10b981",
 }
 
 # ============================================================
@@ -629,7 +649,6 @@ if page == "📊  Dashboard":
     pending = int((df["status"] == "Pending").sum()) if not df.empty else 0
     resolved = int((df["status"] == "Resolved").sum()) if not df.empty else 0
     high = int((df["priority"] == "High").sum()) if not df.empty else 0
-    upvotes = int(df["upvotes"].sum()) if not df.empty else 0
 
     with c1:
         st.markdown(f"""
@@ -686,33 +705,21 @@ if page == "📊  Dashboard":
             """, unsafe_allow_html=True)
         else:
             recent = df.head(5)
-            rows = ""
+            headers = ["Report ID", "Issue Type", "Location", "Priority", "Status"]
+            rows = []
             for _, r in recent.iterrows():
                 status_cls = STATUS_MAP.get(r["status"], "status-pending")
-                priority_color = {"High": "#ef4444", "Medium": "#f59e0b", "Low": "#10b981"}.get(r["priority"], "#6b7280")
-                rows += f"""
-                <tr>
-                    <td class="name-cell">{r['report_id']}</td>
-                    <td>{r['issue_type']}</td>
-                    <td>{r['location'][:28]}{'...' if len(r['location']) > 28 else ''}</td>
-                    <td><span style="color:{priority_color}; font-weight:600;">{r['priority']}</span></td>
-                    <td><span class="status {status_cls}">{r['status']}</span></td>
-                </tr>
-                """
-            st.markdown(f"""
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Report ID</th>
-                        <th>Issue Type</th>
-                        <th>Location</th>
-                        <th>Priority</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>{rows}</tbody>
-            </table>
-            """, unsafe_allow_html=True)
+                priority_color = PRIORITY_COLORS.get(r["priority"], "#6b7280")
+                loc = str(r["location"])
+                loc_display = loc[:28] + ("..." if len(loc) > 28 else "")
+                rows.append([
+                    f'<span class="name-cell">{r["report_id"]}</span>',
+                    str(r["issue_type"]),
+                    loc_display,
+                    f'<span style="color:{priority_color};font-weight:600;">{r["priority"]}</span>',
+                    f'<span class="status {status_cls}">{r["status"]}</span>',
+                ])
+            render_html_table(headers, rows)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with right:
@@ -720,16 +727,12 @@ if page == "📊  Dashboard":
         st.markdown('<div class="section-card-title">Resolution Rate</div>', unsafe_allow_html=True)
 
         pct = int((resolved / total * 100)) if total else 0
-        # gauge color
         if pct >= 70:
             gauge_color = "#10b981"
-            gauge_cls = "green"
         elif pct >= 40:
             gauge_color = "#f59e0b"
-            gauge_cls = "orange"
         else:
             gauge_color = "#ef4444"
-            gauge_cls = "red"
 
         st.markdown(f"""
         <div class="gauge-container">
@@ -779,22 +782,18 @@ if page == "📊  Dashboard":
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-card-title">Top Upvoted Issues</div>', unsafe_allow_html=True)
         if not df.empty:
-            top = df.nlargest(5, "upvotes")[["issue_type", "location", "upvotes"]]
-            rows = ""
+            top = df.nlargest(5, "upvotes")
+            headers = ["Issue", "Location", "Upvotes"]
+            rows = []
             for _, r in top.iterrows():
-                rows += f"""
-                <tr>
-                    <td class="name-cell">{r['issue_type']}</td>
-                    <td>{r['location'][:24]}{'...' if len(r['location']) > 24 else ''}</td>
-                    <td><b style="color:#6366f1;">👍 {r['upvotes']}</b></td>
-                </tr>
-                """
-            st.markdown(f"""
-            <table class="data-table">
-                <thead><tr><th>Issue</th><th>Location</th><th>Upvotes</th></tr></thead>
-                <tbody>{rows}</tbody>
-            </table>
-            """, unsafe_allow_html=True)
+                loc = str(r["location"])
+                loc_display = loc[:24] + ("..." if len(loc) > 24 else "")
+                rows.append([
+                    f'<span class="name-cell">{r["issue_type"]}</span>',
+                    loc_display,
+                    f'<b style="color:#6366f1;">👍 {r["upvotes"]}</b>',
+                ])
+            render_html_table(headers, rows)
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">🏆</div><p>No data</p></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
@@ -984,38 +983,24 @@ elif page == "📋  All Reports":
         st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        rows = ""
+        headers = ["Report ID", "Type", "Location", "Department", "Priority", "Status", "Upvotes"]
+        rows = []
         for _, r in filtered.iterrows():
             status_cls = STATUS_MAP.get(r["status"], "status-pending")
-            priority_color = {"High": "#ef4444", "Medium": "#f59e0b", "Low": "#10b981"}.get(r["priority"], "#6b7280")
+            priority_color = PRIORITY_COLORS.get(r["priority"], "#6b7280")
             icon = DEPARTMENTS.get(r["issue_type"], {}).get("icon", "📌")
-            rows += f"""
-            <tr>
-                <td class="name-cell">{r['report_id']}</td>
-                <td>{icon} {r['issue_type']}</td>
-                <td>{r['location'][:32]}{'...' if len(r['location']) > 32 else ''}</td>
-                <td>{r['department']}</td>
-                <td><span style="color:{priority_color}; font-weight:600;">{r['priority']}</span></td>
-                <td><span class="status {status_cls}">{r['status']}</span></td>
-                <td><b style="color:#6366f1;">👍 {r['upvotes']}</b></td>
-            </tr>
-            """
-        st.markdown(f"""
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Report ID</th>
-                    <th>Type</th>
-                    <th>Location</th>
-                    <th>Department</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Upvotes</th>
-                </tr>
-            </thead>
-            <tbody>{rows}</tbody>
-        </table>
-        """, unsafe_allow_html=True)
+            loc = str(r["location"])
+            loc_display = loc[:32] + ("..." if len(loc) > 32 else "")
+            rows.append([
+                f'<span class="name-cell">{r["report_id"]}</span>',
+                f'{icon} {r["issue_type"]}',
+                loc_display,
+                str(r["department"]),
+                f'<span style="color:{priority_color};font-weight:600;">{r["priority"]}</span>',
+                f'<span class="status {status_cls}">{r["status"]}</span>',
+                f'<b style="color:#6366f1;">👍 {r["upvotes"]}</b>',
+            ])
+        render_html_table(headers, rows)
         st.markdown('</div>', unsafe_allow_html=True)
 
         # Upvote buttons
